@@ -96,9 +96,9 @@ class FindMuonWorkChain(ProtocolMixin, WorkChain):
 
     Monitor support
     ---------------
-    When ``aiida-monitor`` is installed, the ``aiida_monitor.default_monitor``
-    is attached automatically to every ``PwBaseWorkChain`` relaxation step
-    (controlled by ``activate_monitors`` in ``get_builder_from_protocol``).
+    The ``quantumespresso.accuracy_stuck`` monitor is attached automatically
+    to every ``PwBaseWorkChain`` relaxation step (controlled by
+    ``activate_monitors`` in ``get_builder_from_protocol``).
     Additional monitors can be passed via ``monitor_entry_point_list``.
     """
 
@@ -470,13 +470,11 @@ class FindMuonWorkChain(ProtocolMixin, WorkChain):
             step before proceeding to the next (more expensive) step. Default ``False``.
         :param noncollinear: set to ``True`` for non-collinear magnetic calculations;
             disables automatic Gamma-only optimisation. Default ``False``.
-        :param monitor_entry_point_list: list of ``aiida-monitor`` entry-point strings to
-            attach to every ``PwBaseWorkChain`` relaxation. The
-            ``'aiida_monitor.default_monitor'`` entry point is appended automatically when
-            ``aiida-monitor`` is installed and ``activate_monitors=True``.
-        :param activate_monitors: enable monitor attachment. When ``True`` (default) and
-            ``aiida-monitor`` is installed, ``aiida_monitor.default_monitor`` is added
-            automatically. Set to ``False`` to disable all monitors.
+        :param monitor_entry_point_list: additional monitor entry-point strings to attach
+            to every ``PwBaseWorkChain`` relaxation.
+        :param activate_monitors: enable monitor attachment. When ``True`` (default),
+            ``quantumespresso.accuracy_stuck`` is added automatically alongside any
+            additional monitors. Set to ``False`` to disable all monitors.
         :param additional_pythonjob_inputs: extra keyword arguments forwarded to the
             ``PythonJob`` input-preparation helper (e.g. metadata, custom serialisers).
         :return: a process builder instance with all inputs defined ready for launch.
@@ -639,26 +637,15 @@ class FindMuonWorkChain(ProtocolMixin, WorkChain):
         if len(supercells_list)>0:
             builder.supercells_list = orm.List(list=supercells_list)
         
-        try:
-            from aiida_monitor.monitor import monitor
-            from importlib.metadata import entry_points
-            registered = {ep.name for ep in entry_points().get('aiida.calculations.monitors', [])}
-            if 'aiida_monitor.default_monitor' in registered:
-                if 'aiida_monitor.default_monitor' not in monitor_entry_point_list and activate_monitors:
-                    monitor_entry_point_list.append('aiida_monitor.default_monitor')
-        except Exception:
-            pass
-        
-        # Filter to only entry points that are actually registered
-        try:
-            from importlib.metadata import entry_points
-            registered = {ep.name for ep in entry_points().get('aiida.calculations.monitors', [])}
-            monitor_entry_point_list = [ep for ep in monitor_entry_point_list if ep in registered]
-        except Exception:
-            pass
-
-        if monitor_entry_point_list and activate_monitors:
-            builder.relax.base_relax.pw.monitors = {f'monitor_{i}': orm.Dict({'entry_point': monitor_entry_point_list[i]}) for i in range(len(monitor_entry_point_list))}
+        if activate_monitors:
+            monitor_entry_points = list(monitor_entry_point_list)
+            default_monitor = 'quantumespresso.accuracy_stuck'
+            if default_monitor not in monitor_entry_points:
+                monitor_entry_points.append(default_monitor)
+            builder.relax.base_relax.pw.monitors = {
+                f'monitor_{i}': orm.Dict({'entry_point': entry_point})
+                for i, entry_point in enumerate(monitor_entry_points)
+            }
 
         return builder
     
